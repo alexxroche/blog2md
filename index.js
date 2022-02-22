@@ -80,25 +80,25 @@ function wordpressImport(backupXmlFile, outputDir){
     fs.readFile(backupXmlFile, function(err, data) {
         parser.parseString(data, function (err, result) {
             if (err) {
-                console.log(`Error parsing xml file (${backupXmlFile})\n${JSON.stringify(err)}`); 
+                console.log(`Error parsing xml file (${backupXmlFile})\n${JSON.stringify(err)}`);
                 return 1;
             }
-            // console.dir(result); 
+            // console.dir(result);
             // console.log(JSON.stringify(result)); return;
             var posts = [];
-            
+
             // try {
                 posts = result.rss.channel[0].item;
-                
+
                 console.log(`Total Post count: ${posts.length}`);
 
                 posts = posts.filter(function(post){
                     var status = '';
                     if(post["wp:status"]){
-                        status = post["wp:status"].join(''); 
+                        status = post["wp:status"].join('');
                     }
                     // console.log(post["wp:status"].join(''));
-                    return status != "private" && status != "inherit" 
+                    return status != "private" && status != "inherit"
                 });
 
 
@@ -116,12 +116,12 @@ function wordpressImport(backupXmlFile, outputDir){
                 var fileContent = '';
                 var fileHeader = '';
                 var postMaps = {};
-                
+
                 posts.forEach(function(post){
                     var postMap = {};
 
                     title = post.title[0].trim();
-                    
+
                     // console.log(title);
 
                     // if (title && title.indexOf("'")!=-1){
@@ -140,11 +140,11 @@ function wordpressImport(backupXmlFile, outputDir){
 
                     console.log(`\n\n\n\ntitle: '${title}'`);
                     console.log(`published: '${published}'`);
-                    
+
                     if (comments){
-                        console.log(`comments: '${comments.length}'`);    
+                        console.log(`comments: '${comments.length}'`);
                     }
-                    
+
                     tags = [];
 
                     var categories = post.category;
@@ -168,7 +168,7 @@ function wordpressImport(backupXmlFile, outputDir){
                     fname = outputDir+'/'+fname+'.md';
                     pmap.postName = fname;
                     console.log(`fname: '${fname}'`);
-                    
+
                     if (post["content:encoded"]){
                         // console.log('content available');
                         var postContent = post["content:encoded"].toString();
@@ -184,7 +184,7 @@ function wordpressImport(backupXmlFile, outputDir){
                         pmap.header = `${fileHeader}\n`;
 
                         writeToFile(fname, fileContent);
-                        
+
                     }
 
                     //comments:
@@ -241,14 +241,14 @@ function wordpressImport(backupXmlFile, outputDir){
 
 
 
- 
+
 function bloggerImport(backupXmlFile, outputDir){
     var parser = new xml2js.Parser();
     // __dirname + '/foo.xml'
     fs.readFile(backupXmlFile, function(err, data) {
         parser.parseString(data, function (err, result) {
             if (err){
-                console.log(`Error parsing xml file (${backupXmlFile})\n${JSON.stringify(err)}`); return 1;
+                console.error(`Error parsing xml file (${backupXmlFile})\n${JSON.stringify(err)}`); return 1;
             }
             // console.dir(JSON.stringify(result)); return;
 
@@ -264,10 +264,13 @@ function bloggerImport(backupXmlFile, outputDir){
                     return entry.id[0].indexOf('.post-')!=-1 && entry['thr:in-reply-to']
                 });
 
+                /*
                 // console.dir(posts);
+
 
                 console.log(`Content-posts ${posts.length}`);
                 console.log(`Content-Comments ${comments.length}`);
+                */
 
                  var content = '';
                  var markdown = '';
@@ -277,7 +280,7 @@ function bloggerImport(backupXmlFile, outputDir){
 
                 posts.forEach(function(entry){
                     var postMap = {};
-                    
+
                     var title = entry.title[0]['_'];
                     // title = tds.turndown(title);
                     if (title && title.indexOf("'")!=-1){
@@ -287,25 +290,148 @@ function bloggerImport(backupXmlFile, outputDir){
 
                     var published = entry.published;
                     var draft = 'false';
-
+                    if (entry['app:control']) {
+                        //console.log('[d] CONTROL: %o', entry['app:control']);
+                        if (entry['app:control'][0]['app:draft'][0] == 'yes'){
+                            draft = true
+                        }else{
+                            draft = entry['app:control'][0]['app:draft'][0];
+                        }
+                    }
+                    /*
                     console.log(`title: "${title}"`);
                     console.log(`date: ${published}`);
-                    console.log(`draft: false`);
-                    
+                    console.log(`draft: ${draft}`);
+                    */
+
                     var links = entry.link;
 
                     var urlLink = entry.link.filter(function(link){
-                        return link["$"].type && link["$"].rel && link["$"].rel=='alternate' && link["$"].type=='text/html'
+                        if (draft && draft == 'false'){
+                            //console.log('[d:is_draft] Published entry');
+                            return link["$"].type && link["$"].rel && link["$"].rel=='alternate' && link["$"].type=='text/html'
+                        }else if(link["$"].rel && link["$"].rel=='replies'){
+                            return link["$"].type && link["$"].rel && link["$"].rel=='replies' && link["$"].type=='text/html'
+                        }else if(link[0] && link[0]["$"].rel && link[0]["$"].rel=='replies'){
+                            return link[0]["$"].type && link[0]["$"].rel && link[0]["$"].rel=='replies' && link[0]["$"].type=='text/html'
+                        }else if(link && link["$"].rel && link["$"].rel=='self'){
+                            //console.log('[d:self] %o', title);
+                            return link["$"].type && link["$"].rel && link["$"].rel=='self' && link["$"].type=='application/atom+xml'
+                        }else if(link && link["$"].rel && link["$"].rel=='edit'){
+                            //console.log('[d:edit] %o', title);
+                            return link["$"].type && link["$"].rel && link["$"].rel=='edit' && link["$"].type=='application/atom+xml'
+                        }else{
+                            if(link[0] && link[0]["$"].rel){
+                                console.log('[d:is_draft] rel is bugged: %o', link[0]["$"]);
+                            }else if(link[0]){
+                                console.log('[d:is_draft] missing replies: %o', link[0]);
+                            }else if(link && link["$"].rel){
+                                console.log('[d:is_draft] turn ATOM in replies: %o', link["$"]);
+                            }else{
+                                console.log('[d:is_draft] LINKS bugged: %o', link);
+                            }
+                        }
                     });
 
                     var url=''
+                    var data=`data: \n`
+                    if (entry.updated) {
+                        data = `${data}    updated: ${entry.updated}\n`;
+                    }
+                    var author =''
+                    if (entry.author) {
+                        //console.error('[DEBUG] the author is %o', entry.author)
+                        if (entry.author[0]){
+                            if (entry.author[0].name) {
+                                author = `${author}\t\tname: ${entry.author[0].name}\n`;
+                            }
+                            if (entry.author[0].email) {
+                                author = `${author}\t\temail: ${entry.author[0].email}\n`;
+                            }
+                            if (entry.author[0].uri) {
+                                author = `${author}\t\turi: ${entry.author[0].uri}\n`;
+                            }
+                            if (entry.author[0]['gd:image']) {
+                                author = `${author}\t\tthumbnail: \n`;
+                                //console.log('[author.gd:image] %o', entry.author[0]['gd:image'][0]);
+                                author = `${author}\t\t\tsrc: ${entry.author[0]['gd:image'][0]["$"].src}\n`;
+                                author = `${author}\t\t\twidth: ${entry.author[0]['gd:image'][0]["$"].width}\n`;
+                                author = `${author}\t\t\theight: ${entry.author[0]['gd:image'][0]["$"].height}\n`;
+                            }
+                        }
+                    }
+
+                    if (author && author.length >= 1){
+                        author = `    author:\n${author}`
+                        data = `${data}${author}`
+                    }
+                    if (entry['thr:total']){
+                        data = `${data}    thr_totle: ${entry['thr:total']}\n`
+                    }
+                    if (entry['media:thumbnail']){
+                        data = `${data}    media_thumbnail:\n`;
+                        data = `${data}        url: ${entry['media:thumbnail'][0].url}\n`;
+                        data = `${data}        width: ${entry['media:thumbnail'][0].width}\n`;
+                        data = `${data}        height: ${entry['media:thumbnail'][0].height}\n`;
+                    }
+
+                    if (entry['georss:featurename'] || entry['georss:point'] || entry['georss:box']){
+                        data = `${data}    georss:\n`;
+                        if (entry['georss:featurename']){
+                            data = `${data}        featurename: ${entry['georss:featurename']}\n`;
+                        }
+                        if (entry['georss:point']){
+                            data = `${data}        point: ${entry['georss:point']}\n`;
+                        }
+                        if (entry['georss:box']){
+                            data = `${data}        box: ${entry['georss:box']}\n`;
+                        }
+                    }
+
+                    /*
+                    for (var t in Object.keys(entry)){
+                        if (t != 'author' && t != content){
+                            console.log('  - %o', t)
+                        }
+                    }
+                    var keys = [];
+                    for (var k in entry) keys.push(k);
+                    for (var t in keys){
+                        console.log('  - %o', t)
+                    }
+                    */
+                    //for (var t in Object.keys(entry)){
+                    for (var t in entry){
+                        if (t != 'id' &&
+                            t != 'author' &&
+                            t != 'content' &&
+                            t != 'published' &&
+                            t != 'updated' &&
+                            t != 'category' &&
+                            t != 'title' &&
+                            t != 'link' &&
+                            t != 'thr:total' &&
+                            t != 'media:thumbnail' &&
+                            t != 'georss:featurename' &&
+                            t != 'georss:point' &&
+                            t != 'georss:box' &&
+                            t != 'app:control'
+                            ){
+                            console.error('[UNKNOWN tag] I do not know how to process  - %o: %o', t, entry[t])
+                        }
+                    }
 
                     // console.dir(urlLink[0]);
                     if (urlLink && urlLink[0] && urlLink[0]['$'] && urlLink[0]['$'].href){
-                        url = urlLink[0]['$'].href;
+                        if (draft && draft == 'false'){
+                            url = urlLink[0]['$'].href;
+                        }else{
+                            var uri = urlLink[0]['$'].href;
+                            url = uri.substring(0, uri.indexOf('#')); // strip #this_part
+                        }
                         var fname = outputDir + '/' + path.basename(url);
                         fname = fname.replace('.html', '.md')
-                        console.log(fname);
+                        //console.log(fname);
                         postMap.postName = fname
                         postMap.fname = fname.replace('.md', '-comments.md');
                         postMap.comments = [];
@@ -316,26 +442,35 @@ function bloggerImport(backupXmlFile, outputDir){
                             content = entry.content[0]['_'];
                             markdown = tds.turndown(content);
                             // console.log(markdown);
-
-                            
+                        }else{
+                            console.error('[e] failed to locate content for ' + title)
                         }
+                        var escaped_content = content.replace(/'/g, '&#39;');
+                        data = `${data}    raw_content: '${escaped_content}'\n`;
+                        // NOTE: we should cycle through ${entry}.keys and add them all
+                        //       to ${data}
 
                         var tagLabel = [];
                         var tags = [];
 
-                        
+
                         tagLabel = entry.category.filter(function (tag){
                             // console.log(`tagged against :${tag['$'].term}`);
                             return tag['$'].term && tag['$'].term.indexOf('http://schemas.google')==-1;
                         });
-                        console.log(`No of category: ${entry.category.length}`);
+                        //console.log(`No of category: ${entry.category.length}`);
                         tagLabel.forEach(function(tag){
                             // console.log(`tagged against :${tag['$'].term}`);
-                            tags.push(tag['$'].term);
+                            if (tag['$'].term.includes("[")){
+                                // quote any tags that contain [
+                                tags.push("'" + tag['$'].term + "'");
+                            }else{
+                                tags.push(tag['$'].term);
+                            }
                         });
-                        
 
-                        console.log(`tags: \n${tags.map(a=> '- '+a).join('\n')}\n`);
+
+                        //console.log(`tags: \n${tags.map(a=> '- '+a).join('\n')}\n`);
 
                         var tagString='';
 
@@ -343,13 +478,15 @@ function bloggerImport(backupXmlFile, outputDir){
                             tagString=`tags: \n${tags.map(a=> '- '+a).join('\n')}\n`;
                         }
 
-                        console.dir(postMap);
+                        //console.dir(postMap);
 
-                        console.log("\n\n\n\n\n");
+                        //console.log("\n\n\n\n\n");
 
                         var alias = url.replace(/^.*\/\/[^\/]+/, '');
 
-                        fileHeader = `---\ntitle: '${title}'\ndate: ${published}\ndraft: false\nurl: ${alias}\n${tagString}---\n`;
+                        // convert tabs in the header into spaces so that liquid/cobalt doesn't balk
+                        data = data.replace(/\t/g, '    ');
+                        fileHeader = `---\ntitle: '${title}'\npublished_date: ${published}\nis_draft: ${draft}\npermalink: ${alias}\n${tagString}${data}---\n`;
                         fileContent = `${fileHeader}\n${markdown}`;
 
                         postMap.header = fileHeader;
@@ -357,10 +494,43 @@ function bloggerImport(backupXmlFile, outputDir){
 
                         writeToFile(fname, fileContent)
 
+                    }else{
+                        if (urlLink[0]){
+                            if(urlLink[0]['$']){
+                                console.log('[w] blog post is missing href ' + urlLink[0]['$'].href);
+                            }else{
+                                console.log('[$] urlLink is missing dollar');
+                            }
+                        //}else if (urlLink && urlLink['$'] && urlLink['$'].href){
+                        //    console.log('[kk] entry urlLink is an object not an array:  %o', urlLink);
+                        }else if (urlLink){
+                            //process.stdout.write('[urlLink] found!');
+                            //console.log('[Links] %o', links[0])
+                            for (var l in urlLink){
+                                console.log(' ~ %o', l)
+                                if (l && l['$'] && l['$'].href){
+                                    console.log('[kk] entry urlLink is an object not an array:  %o', l['$'].href);
+                                }else if (l && l.href){
+                                    console.log('[kj] entry urlLink is an object not an array:  %o', l.href);
+                                }else{
+                                    console.log('[e] entry urlLink is lacking access to a href:  %o', l);
+                                    console.error('[e] entry urlLink is lacking access to a href:  %o', l);
+                                }
+                            }
+                        }else{
+                            //console.log('[d] entry is missing urlLink: %o', urlLink);
+                            console.log('[d] entry is missing urlLink:');
+                            var debug_missing_URLlink = entry.link.filter(function(link){
+                                console.log('+ %o', link)
+                            });
+
+
+                        }
                     }
-                    
+
                 });
 
+            /*
 
             comments.forEach(function(entry){
                 // var commentMap = {};
@@ -372,33 +542,34 @@ function bloggerImport(backupXmlFile, outputDir){
                 comment.published = entry['published'][0];
 
                 if(entry['title'][0] && entry['title'][0]["_"]){
-                    comment.title = tds.turndown(entry['title'][0]["_"]);    
+                    comment.title = tds.turndown(entry['title'][0]["_"]);
                 }
 
                 if (entry['content'][0] && entry['content'][0]["_"]){
-                    comment.content = tds.turndown(entry['content'][0]["_"]);    
+                    comment.content = tds.turndown(entry['content'][0]["_"]);
                 }
-                
+
                 comment.author = {name: '', email: '', url: ''};
-                
+
                 if(entry['author'][0]["name"] && entry['author'][0]["name"][0]){
-                    comment.author.name = entry['author'][0]["name"][0];    
+                    comment.author.name = entry['author'][0]["name"][0];
                 }
-                
+
                 if (entry['author'][0]["email"] && entry['author'][0]["email"][0]){
-                    comment.author.email = entry['author'][0]["email"][0];    
+                    comment.author.email = entry['author'][0]["email"][0];
                 }
-                
+
                 if (entry['author'][0]["uri"] && entry['author'][0]["uri"][0]){
-                    comment.author.url = entry['author'][0]["uri"][0];    
+                    comment.author.url = entry['author'][0]["uri"][0];
                 }
-                
+
                 postMaps[postId].comments.push(comment);
             });
 
             // console.log(JSON.stringify(postMaps)); return;
             writeComments(postMaps);
-           
+            */
+
             }
             console.log('Done');
         });
@@ -432,7 +603,7 @@ function writeComments(postMaps){
             }else{
                 writeToFile(postMaps[pmap].fname, `${postMaps[pmap].header}\n${ccontent}`);
             }
-            
+
         }
     }
 }
@@ -442,7 +613,7 @@ function writeComments(postMaps){
 function writeToFile(filename, content, append=false){
 
     if(append){
-        console.log(`DEBUG: going to append to ${filename}`);
+        //console.log(`DEBUG: going to append to ${filename}`);
         try{
             fs.appendFileSync(filename, content);
             console.log(`Successfully appended to ${filename}`);
@@ -453,15 +624,16 @@ function writeToFile(filename, content, append=false){
         }
 
     }else{
-        console.log(`DEBUG: going to write to ${filename}`);
+        //console.log(`DEBUG: going to write to ${filename}`);
         try{
             fs.writeFileSync(filename, content);
-            console.log(`Successfully written to ${filename}`);
+            //console.log(`Successfully written to ${filename}`);
+            process.stdout.write('.'); // lets reduce the noise, but show signs of life
         }
         catch(err){
             console.log(`Error while writing to ${filename} - ${JSON.stringify(err)}`);
             console.dir(err);
         }
     }
-    
+
 }
